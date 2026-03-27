@@ -3,32 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Piano - Ultimate Dreamy Fixed</title>
+    <title>Heavenly Piano - Blue Dream v4</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: #ddeffb; }
         #ui {
-            position: absolute; top: 20px; left: 20px; color: #1d3557;
-            background: rgba(255, 255, 255, 0.4); backdrop-filter: blur(15px);
+            position: absolute; top: 25px; left: 25px; color: #1d3557;
+            background: rgba(255, 255, 255, 0.5); backdrop-filter: blur(12px);
             padding: 25px; border-radius: 20px; z-index: 10; border: 1px solid rgba(255,255,255,0.4);
-            max-width: 280px; box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+            max-width: 300px; box-shadow: 0 10px 40px rgba(0,0,0,0.05);
         }
+        h2 { margin: 0 0 15px 0; font-weight: 300; color: #457b9d; }
         button {
             background: #457b9d; border: none; padding: 14px;
             color: white; cursor: pointer; font-weight: bold; 
-            border-radius: 10px; width: 100%; transition: 0.3s;
+            border-radius: 12px; width: 100%; transition: 0.3s;
         }
         button:hover { background: #1d3557; transform: translateY(-2px); }
-        #status { font-size: 0.8rem; margin-top: 10px; color: #457b9d; font-style: italic; }
-        input[type="file"] { margin-bottom: 15px; width: 100%; }
+        #status { font-size: 0.85rem; margin-top: 10px; color: #457b9d; opacity: 0.8; }
+        input[type="file"] { margin-bottom: 20px; width: 100%; font-size: 0.8rem; }
     </style>
 </head>
 <body>
 
     <div id="ui">
-        <h2>Heavenly Piano v3</h2>
+        <h2>Blue Sky Piano</h2>
         <input type="file" id="midi-upload" accept=".mid,.midi">
-        <button id="start-btn">MULAI REPERTOAR</button>
-        <div id="status">Pilih file MIDI...</div>
+        <button id="start-btn">MAINKAN MELODI</button>
+        <div id="status">Pilih melodi fajar Anda...</div>
     </div>
 
     <script type="importmap">
@@ -50,13 +51,13 @@
         import * as Tone from 'tone';
         import { Midi } from '@tonejs/midi';
 
-        // --- 1. SCENE & CAMERA ---
+        // --- 1. AMBIENCE & SCENE ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0xddeffb);
-        scene.fog = new THREE.Fog(0xddeffb, 20, 70);
+        scene.fog = new THREE.Fog(0xddeffb, 20, 80);
 
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 15, 25);
+        camera.position.set(0, 15, 30);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -66,95 +67,103 @@
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
 
-        const ambient = new THREE.HemisphereLight(0xffffff, 0x457b9d, 1.2);
-        scene.add(ambient);
+        const light = new THREE.HemisphereLight(0xffffff, 0x457b9d, 1.5);
+        scene.add(light);
 
-        // --- 2. WATER REFLECTION FLOOR ---
+        // --- 2. MIRROR WATER FLOOR ---
         const floor = new THREE.Mesh(
             new THREE.CircleGeometry(40, 64),
-            new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0.4, transparent: true, opacity: 0.6 })
+            new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0.5, transparent: true, opacity: 0.6 })
         );
         floor.rotation.x = -Math.PI / 2;
         floor.position.y = -0.6;
         scene.add(floor);
 
-        // --- 3. PIANO KEYS ---
+        // --- 3. PIANO GENERATION ---
         const keys = [];
         const keyGroup = new THREE.Group();
         const pattern = [false, true, false, true, false, false, true, false, true, false, true, false];
         
         for (let i = 0; i < 88; i++) {
             const isBlack = pattern[i % 12];
-            const mesh = new THREE.Mesh(
-                isBlack ? new THREE.BoxGeometry(0.28, 0.45, 1.8) : new THREE.BoxGeometry(0.48, 0.35, 3.2),
-                new THREE.MeshStandardMaterial({ 
-                    color: isBlack ? 0x1d3557 : 0xf1faee, 
-                    emissive: new THREE.Color(0x000000),
-                    roughness: 0.2
-                })
-            );
+            const geometry = isBlack ? new THREE.BoxGeometry(0.3, 0.5, 2) : new THREE.BoxGeometry(0.5, 0.4, 3.5);
+            const material = new THREE.MeshStandardMaterial({ 
+                color: isBlack ? 0x1d3557 : 0xffffff, 
+                emissive: new THREE.Color(0x000000) 
+            });
             
-            const xPos = (i - 44) * 0.52; 
-            mesh.position.set(xPos, isBlack ? 0.25 : 0, isBlack ? -0.7 : 0);
+            const mesh = new THREE.Mesh(geometry, material);
+            const xPos = (i - 44) * 0.55; 
+            mesh.position.set(xPos, isBlack ? 0.3 : 0, isBlack ? -0.8 : 0);
             
             keyGroup.add(mesh);
-            keys.push({ mesh, originalY: mesh.position.y, activeTweens: [] });
+            keys.push({ mesh, originalY: mesh.position.y, isBlack });
         }
         scene.add(keyGroup);
 
         // --- 4. PARTICLE SYSTEM ---
-        const particleGeo = new THREE.SphereGeometry(0.1, 8, 8);
-        function launchParticle(x, z, color) {
-            const pMat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 1 });
-            const p = new THREE.Mesh(particleGeo, pMat);
+        function createParticle(x, z, color) {
+            const p = new THREE.Mesh(
+                new THREE.SphereGeometry(0.12, 8, 8),
+                new THREE.MeshBasicMaterial({ color: color, transparent: true })
+            );
             p.position.set(x, 0.5, z);
             scene.add(p);
 
             new TWEEN.Tween(p.position)
-                .to({ y: 8 + Math.random() * 4, x: x + (Math.random() - 0.5) * 4 }, 2500)
+                .to({ y: 10 + Math.random() * 5, x: x + (Math.random() - 0.5) * 5 }, 3000)
                 .easing(TWEEN.Easing.Quadratic.Out)
                 .onComplete(() => scene.remove(p))
                 .start();
 
-            new TWEEN.Tween(p.material).to({ opacity: 0 }, 2500).start();
+            new TWEEN.Tween(p.material).to({ opacity: 0 }, 3000).start();
         }
 
-        // --- 5. AUDIO ---
+        // --- 5. AUDIO & ANIMATION ---
         const sampler = new Tone.Sampler({
             urls: { "C4": "C4.mp3", "A0": "A0.mp3", "C5": "C5.mp3" },
             baseUrl: "https://tonejs.github.io/audio/salamander/",
         }).toDestination();
 
-        // --- 6. CORE LOGIC (Fixed Glow & Movement) ---
         let isPlaying = false;
-        function animateKey(idx, duration, velocity) {
+
+        function playKeyVisual(idx, duration, velocity) {
             const key = keys[idx];
             if (!key) return;
 
-            // Stop animasi sebelumnya agar tidak bertabrakan
-            key.activeTweens.forEach(t => t.stop());
-            key.activeTweens = [];
+            // Warna Glow Berbasis Velocity
+            const glowColor = new THREE.Color(0xa8dadc).multiplyScalar(velocity + 0.5);
 
-            const glowColor = new THREE.Color(0xa8dadc).multiplyScalar(velocity + 0.3);
-
-            // Partikel
+            // Munculkan Partikel
             const worldPos = new THREE.Vector3();
             key.mesh.getWorldPosition(worldPos);
-            launchParticle(worldPos.x, worldPos.z, glowColor);
+            createParticle(worldPos.x, worldPos.z, glowColor);
 
-            // Tween Tekan & Glow
-            const press = new TWEEN.Tween(key.mesh.position).to({ y: key.originalY - 0.2 }, 60).easing(TWEEN.Easing.Cubic.Out);
-            const lightOn = new TWEEN.Tween(key.mesh.material.emissive).to(glowColor, 60);
+            // ANIMASI TEKAN (KUNCI PERBAIKAN)
+            // 1. Reset posisi jika nada dimainkan berulang
+            new TWEEN.Tween(key.mesh.position)
+                .to({ y: key.originalY - 0.25 }, 80)
+                .easing(TWEEN.Easing.Cubic.Out)
+                .start();
 
-            // Tween Lepas & Glow Off
-            const release = new TWEEN.Tween(key.mesh.position).to({ y: key.originalY }, 300).delay(duration * 1000).easing(TWEEN.Easing.Quadratic.Out);
-            const lightOff = new TWEEN.Tween(key.mesh.material.emissive).to({ r:0, g:0, b:0 }, 400).delay(duration * 1000);
+            new TWEEN.Tween(key.mesh.material.emissive)
+                .to(glowColor, 80)
+                .start();
 
-            key.activeTweens.push(press, lightOn, release, lightOff);
-            press.start(); lightOn.start(); release.start(); lightOff.start();
+            // 2. ANIMASI KEMBALI (Setelah durasi nada habis)
+            new TWEEN.Tween(key.mesh.position)
+                .to({ y: key.originalY }, 300)
+                .delay(duration * 1000)
+                .easing(TWEEN.Easing.Quadratic.Out)
+                .start();
+
+            new TWEEN.Tween(key.mesh.material.emissive)
+                .to({ r: 0, g: 0, b: 0 }, 500)
+                .delay(duration * 1000)
+                .start();
         }
 
-        // --- 7. HANDLERS ---
+        // --- 6. MIDI & UI ---
         const startBtn = document.getElementById('start-btn');
         const upload = document.getElementById('midi-upload');
         let midi = null;
@@ -162,34 +171,36 @@
         upload.addEventListener('change', async (e) => {
             const arrayBuffer = await e.target.files[0].arrayBuffer();
             midi = new Midi(arrayBuffer);
-            document.getElementById('status').innerText = "Melodi siap!";
+            document.getElementById('status').innerText = "Langit siap bernyanyi!";
         });
 
         startBtn.addEventListener('click', async () => {
             if (!midi) return;
             await Tone.start();
             isPlaying = true;
+            document.getElementById('status').innerText = "Menikmati melodi...";
             const now = Tone.now() + 0.5;
+
             midi.tracks.forEach(track => {
                 track.notes.forEach(note => {
                     sampler.triggerAttackRelease(note.name, note.duration, note.time + now, note.velocity);
                     Tone.Draw.schedule(() => {
-                        animateKey(note.midi - 21, note.duration, note.velocity);
+                        playKeyVisual(note.midi - 21, note.duration, note.velocity);
                     }, note.time + now);
                 });
             });
         });
 
-        // --- 8. RENDER LOOP (Cinematic) ---
+        // --- 7. CINEMATIC RENDER LOOP ---
         let angle = 0;
         function animate() {
             requestAnimationFrame(animate);
-            TWEEN.update();
+            TWEEN.update(); // WAJIB ada agar animasi bergerak
             
             if (isPlaying) {
-                angle += 0.002;
-                camera.position.x = Math.sin(angle) * 25;
-                camera.position.z = Math.cos(angle) * 25;
+                angle += 0.0025;
+                camera.position.x = Math.sin(angle) * 28;
+                camera.position.z = Math.cos(angle) * 28;
                 camera.lookAt(0, 0, 0);
             }
 
@@ -197,6 +208,12 @@
             renderer.render(scene, camera);
         }
         animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
