@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Piano - Ultimate Dreamy Edition</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: #ddeffb; }
+        #ui {
+            position: absolute; top: 25px; left: 25px; color: #457b9d;
+            background: rgba(255, 255, 255, 0.4); backdrop-filter: blur(15px);
+            padding: 25px; border-radius: 20px; z-index: 10;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.05); border: 1px solid rgba(255,255,255,0.5);
+            max-width: 280px;
+        }
+        h2 { margin: 0 0 15px 0; font-weight: 300; font-size: 1.4rem; color: #1d3557; }
+        button {
+            background: #a8dadc; border: none; padding: 14px;
+            color: #1d3557; cursor: pointer; font-weight: bold; 
+            border-radius: 12px; width: 100%; transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(168, 218, 220, 0.4);
+        }
+        button:hover { background: #457b9d; color: white; transform: translateY(-2px); }
+        #status { font-size: 0.8rem; margin-top: 12px; color: #5a7d9a; font-style: italic; }
+        input[type="file"] { margin-bottom: 20px; font-size: 0.8rem; width: 100%; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h2>Atmospheric Piano</h2>
+        <input type="file" id="midi-upload" accept=".mid,.midi">
+        <button id="start-btn">MULAI KONSER</button>
+        <div id="status">Siapkan file MIDI terbaikmu...</div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "tone": "https://esm.sh/tone",
+                "@tonejs/midi": "https://esm.sh/@tonejs/midi",
+                "@tweenjs/tween.js": "https://esm.sh/@tweenjs/tween.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import * as TWEEN from '@tweenjs/tween.js';
+        import * as Tone from 'tone';
+        import { Midi } from '@tonejs/midi';
+
+        // --- 1. CORE SCENE & SKY ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xddeffb); 
+        scene.fog = new THREE.Fog(0xddeffb, 15, 60);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 12, 25);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Optimasi performa
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.autoRotate = false; // Kita akan buat kustom auto-rotate
+
+        // --- 2. LIGHTING (Soft Morning Glow) ---
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x457b9d, 1.2);
+        scene.add(hemiLight);
+
+        const pointLight = new THREE.PointLight(0xffffff, 50, 100);
+        pointLight.position.set(0, 10, 5);
+        scene.add(pointLight);
+
+        // --- 3. MIRROR WATER FLOOR ---
+        // Membuat lantai reflektif (efek air tenang)
+        const floorGeo = new THREE.CircleGeometry(30, 64);
+        const floorMat = new THREE.MeshStandardMaterial({ 
+            color: 0xffffff, 
+            roughness: 0.05, 
+            metalness: 0.6,
+            transparent: true,
+            opacity: 0.8
+        });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.y = -0.6;
+        scene.add(floor);
+
+        // --- 4. PIANO SETUP ---
+        const keys = [];
+        const keyGroup = new THREE.Group();
+        const pattern = [false, true, false, true, false, false, true, false, true, false, true, false];
+        
+        let whiteKeyCount = 0;
+        for (let i = 0; i < 88; i++) {
+            const isBlack = pattern[i % 12];
+            const geometry = isBlack ? new THREE.BoxGeometry(0.28, 0.45, 1.8) : new THREE.BoxGeometry(0.48, 0.35, 3);
+            const material = new THREE.MeshStandardMaterial({ 
+                color: isBlack ? 0x1d3557 : 0xf1faee,
+                roughness: 0.1,
+                metalness: 0.3,
+                emissive: new THREE.Color(0x000000)
+            });
+            
+            const mesh = new THREE.Mesh(geometry, material);
+            if (isBlack) {
+                mesh.position.set((whiteKeyCount - 0.5) * 0.52, 0.25, -0.6);
+            } else {
+                mesh.position.set(whiteKeyCount * 0.52, 0, 0);
+                whiteKeyCount++;
+            }
+            keyGroup.add(mesh);
+            keys.push({ mesh, isBlack, originalY: mesh.position.y });
+        }
+        keyGroup.position.x = -(whiteKeyCount * 0.52) / 2;
+        scene.add(keyGroup);
+
+        // --- 5. PARTICLE SYSTEM (Note Fountain) ---
+        const particles = [];
+        const particleGeo = new THREE.SphereGeometry(0.08, 8, 8);
+        
+        function createParticle(x, color) {
+            const pMat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 1 });
+            const p = new THREE.Mesh(particleGeo, pMat);
+            p.position.set(x, 0.5, 0);
+            scene.add(p);
+            
+            // Animasi Partikel ke atas
+            new TWEEN.Tween(p.position)
+                .to({ y: 5 + Math.random() * 3, x: x + (Math.random() - 0.5) * 2 }, 2000)
+                .easing(TWEEN.Easing.Quadratic.Out)
+                .onComplete(() => {
+                    scene.remove(p);
+                    particles.splice(particles.indexOf(p), 1);
+                })
+                .start();
+
+            new TWEEN.Tween(p.material).to({ opacity: 0 }, 2000).start();
+            particles.push(p);
+        }
+
+        // --- 6. AUDIO & MIDI LOGIC ---
+        const sampler = new Tone.Sampler({
+            urls: { "C4": "C4.mp3", "A0": "A0.mp3", "A1": "A1.mp3", "C5": "C5.mp3" },
+            baseUrl: "https://tonejs.github.io/audio/salamander/",
+            release: 2
+        }).toDestination();
+
+        let isPlaying = false;
+        let midiData = null;
+
+        function animateKeyPress(idx, duration, velocity) {
+            const key = keys[idx];
+            if (!key) return;
+
+            // Gerakan Tuts
+            new TWEEN.Tween(key.mesh.position)
+                .to({ y: key.originalY - 0.18 }, 70)
+                .easing(TWEEN.Easing.Cubic.Out)
+                .start();
+
+            // Efek Cahaya Tuts
+            const glowColor = new THREE.Color(0xa8dadc).multiplyScalar(velocity + 0.5);
+            key.mesh.material.emissive.copy(glowColor);
+
+            // Munculkan Partikel
+            const worldPos = new THREE.Vector3();
+            key.mesh.getWorldPosition(worldPos);
+            createParticle(worldPos.x, glowColor);
+
+            // Kembali
+            setTimeout(() => {
+                new TWEEN.Tween(key.mesh.position)
+                    .to({ y: key.originalY }, 250)
+                    .easing(TWEEN.Easing.Quadratic.InOut)
+                    .start();
+                new TWEEN.Tween(key.mesh.material.emissive)
+                    .to({ r:0, g:0, b:0 }, 500)
+                    .start();
+            }, duration * 1000);
+        }
+
+        // --- 7. CAMERA MODES ---
+        let cameraAngle = 0;
+        function updateCamera() {
+            if (isPlaying) {
+                cameraAngle += 0.002;
+                camera.position.x = Math.sin(cameraAngle) * 22;
+                camera.position.z = Math.cos(cameraAngle) * 22;
+                camera.position.y = 10 + Math.sin(cameraAngle * 0.5) * 3;
+                camera.lookAt(0, 0, 0);
+            }
+        }
+
+        // --- 8. UI HANDLERS ---
+        const uploadInput = document.getElementById('midi-upload');
+        const startBtn = document.getElementById('start-btn');
+
+        uploadInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const arrayBuffer = await file.arrayBuffer();
+                midiData = new Midi(arrayBuffer);
+                document.getElementById('status').innerText = "Melodi siap dimainkan!";
+            }
+        });
+
+        startBtn.addEventListener('click', async () => {
+            if (!midiData) return;
+            await Tone.start();
+            isPlaying = true;
+            document.getElementById('status').innerText = "Sedang berlangsung...";
+            const now = Tone.now() + 0.5;
+
+            midiData.tracks.forEach(track => {
+                track.notes.forEach(note => {
+                    sampler.triggerAttackRelease(note.name, note.duration, note.time + now, note.velocity);
+                    Tone.Draw.schedule(() => {
+                        animateKeyPress(note.midi - 21, note.duration, note.velocity);
+                    }, note.time + now);
+                });
+            });
+        });
+
+        // --- 9. RENDER LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            TWEEN.update();
+            updateCamera();
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
