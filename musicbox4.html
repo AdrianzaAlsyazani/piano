@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grand Classic MIDI Piano - 18th Century Edition</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Times New Roman', serif; }
+        #ui {
+            position: absolute; top: 30px; left: 30px; color: #e5c100;
+            background: rgba(20, 15, 10, 0.9); padding: 25px; 
+            border: 2px solid #8e6d13; border-radius: 2px; z-index: 10;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+        h2 { margin-top: 0; letter-spacing: 2px; text-transform: uppercase; font-size: 1.2rem; }
+        button {
+            background: #8e6d13; border: 1px solid #e5c100; padding: 12px 24px;
+            color: #fff; cursor: pointer; font-weight: bold; transition: 0.3s;
+            width: 100%; margin-top: 10px;
+        }
+        button:hover { background: #e5c100; color: #000; }
+        #status { font-size: 0.8rem; margin-top: 10px; color: #aaa; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h2>Royal Piano Room</h2>
+        <p>Unggah file MIDI untuk memulai resital:</p>
+        <input type="file" id="midi-upload" accept=".mid,.midi">
+        <button id="start-btn">MAINKAN KOMPOSISI</button>
+        <div id="status">Status: Menunggu file...</div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "tone": "https://esm.sh/tone",
+                "@tonejs/midi": "https://esm.sh/@tonejs/midi",
+                "@tweenjs/tween.js": "https://esm.sh/@tweenjs/tween.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import * as TWEEN from '@tweenjs/tween.js';
+        import * as Tone from 'tone';
+        import { Midi } from '@tonejs/midi';
+
+        // --- 1. SETUP SCENE & CAMERA ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050402); // Sangat gelap, fokus pada piano
+        scene.fog = new THREE.Fog(0x050402, 5, 40);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(-15, 10, 20);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.toneMapping = THREE.ReinhardToneMapping; // HDR Feel
+        renderer.toneMappingExposure = 1.5;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.maxDistance = 50;
+
+        // --- 2. PENCAHAYAAN KLASIK (Lilin & Chandelier) ---
+        const ambient = new THREE.AmbientLight(0x402010, 0.5); // Warm ambient
+        scene.add(ambient);
+
+        const spotLight = new THREE.SpotLight(0xffd580, 50); // Cahaya hangat lilin
+        spotLight.position.set(5, 15, 10);
+        spotLight.angle = 0.5;
+        spotLight.penumbra = 0.5;
+        scene.add(spotLight);
+
+        // --- 3. LANTAI PARQUET & MEJA PIANO ---
+        const floorGeo = new THREE.PlaneGeometry(100, 100);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x1a0f00, roughness: 0.1, metalness: 0.2 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.y = -0.5;
+        scene.add(floor);
+
+        // Body Piano Sederhana bergaya Abad 18 (Mahogany)
+        const bodyGeo = new THREE.BoxGeometry(47, 1.5, 6);
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2e0d00, roughness: 0.05, metalness: 0.3 });
+        const pianoBody = new THREE.Mesh(bodyGeo, bodyMat);
+        pianoBody.position.set(0, -0.2, -2);
+        scene.add(pianoBody);
+
+        // --- 4. PEMBUATAN TUTS PIANO DENGAN ANIMASI ---
+        const keys = [];
+        const numKeys = 88;
+        const keyWidth = 0.5;
+        const keyGroup = new THREE.Group();
+        const pattern = [false, true, false, true, false, false, true, false, true, false, true, false];
+
+        let whiteKeyCount = 0;
+        for (let i = 0; i < numKeys; i++) {
+            const isBlack = pattern[i % 12];
+            let mesh;
+
+            if (isBlack) {
+                mesh = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.3, 0.4, 2),
+                    new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.1 })
+                );
+                mesh.position.set((whiteKeyCount - 0.5) * (keyWidth + 0.02), 0.25, -0.5);
+            } else {
+                mesh = new THREE.Mesh(
+                    new THREE.BoxGeometry(keyWidth, 0.3, 3),
+                    new THREE.MeshStandardMaterial({ color: 0xfaf9f6, roughness: 0.2 })
+                );
+                mesh.position.set(whiteKeyCount * (keyWidth + 0.02), 0, 0);
+                whiteKeyCount++;
+            }
+            keyGroup.add(mesh);
+            keys.push({ mesh, isBlack, originalY: mesh.position.y });
+        }
+        keyGroup.position.x = -(whiteKeyCount * keyWidth) / 2;
+        scene.add(keyGroup);
+
+        // --- 5. AUDIO: SAMPLER PIANO NYATA ---
+        // Menggunakan sampel dari library Salamander (Steinway)
+        const sampler = new Tone.Sampler({
+            urls: {
+                "A0": "A0.mp3", "C1": "C1.mp3", "D#1": "Ds1.mp3", "F#1": "Fs1.mp3",
+                "A1": "A1.mp3", "C2": "C2.mp3", "D#2": "Ds2.mp3", "F#2": "Fs2.mp3",
+                "C4": "C4.mp3"
+            },
+            release: 1,
+            baseUrl: "https://tonejs.github.io/audio/salamander/"
+        }).toDestination();
+
+        // --- 6. LOGIKA MIDI & INTERAKSI ---
+        const uploadInput = document.getElementById('midi-upload');
+        const startBtn = document.getElementById('start-btn');
+        const statusText = document.getElementById('status');
+        let midiData = null;
+
+        uploadInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const arrayBuffer = await file.arrayBuffer();
+                midiData = new Midi(arrayBuffer);
+                statusText.innerText = "Status: MIDI Siap. Klik Mainkan.";
+            }
+        });
+
+        startBtn.addEventListener('click', async () => {
+            if (!midiData) return alert("Pilih file MIDI terlebih dahulu!");
+            
+            await Tone.start();
+            statusText.innerText = "Status: Memainkan...";
+            const now = Tone.now() + 0.5;
+
+            midiData.tracks.forEach(track => {
+                track.notes.forEach(note => {
+                    // Jadwal Suara
+                    sampler.triggerAttackRelease(note.name, note.duration, note.time + now, note.velocity);
+                    
+                    // Jadwal Animasi (Sinkron dengan Waktu Audio)
+                    Tone.Draw.schedule(() => {
+                        const idx = note.midi - 21;
+                        if (keys[idx]) animateKeyPress(idx, note.duration);
+                    }, note.time + now);
+                });
+            });
+        });
+
+        function animateKeyPress(idx, duration) {
+            const key = keys[idx];
+            // Animasi Turun (Abad 18 Easing)
+            new TWEEN.Tween(key.mesh.position)
+                .to({ y: key.originalY - 0.15 }, 50)
+                .easing(TWEEN.Easing.Quadratic.Out)
+                .start();
+
+            // Animasi Naik Kembali
+            setTimeout(() => {
+                new TWEEN.Tween(key.mesh.position)
+                    .to({ y: key.originalY }, 150)
+                    .easing(TWEEN.Easing.Quadratic.In)
+                    .start();
+            }, duration * 1000);
+        }
+
+        // --- 7. RENDER LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            TWEEN.update(); // Update semua transisi animasi
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
