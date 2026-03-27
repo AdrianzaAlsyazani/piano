@@ -3,33 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grand Classic MIDI Piano - 18th Century Edition</title>
+    <title>3D Piano - Soft Sky Edition</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Times New Roman', serif; }
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         #ui {
-            position: absolute; top: 30px; left: 30px; color: #e5c100;
-            background: rgba(20, 15, 10, 0.9); padding: 25px; 
-            border: 2px solid #8e6d13; border-radius: 2px; z-index: 10;
-            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            position: absolute; top: 20px; left: 20px; color: #4a4a4a;
+            background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(10px);
+            padding: 20px; border-radius: 15px; z-index: 10;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1); border: 1px solid rgba(255,255,255,0.3);
         }
-        h2 { margin-top: 0; letter-spacing: 2px; text-transform: uppercase; font-size: 1.2rem; }
+        h2 { margin: 0 0 10px 0; font-weight: 300; letter-spacing: 1px; }
         button {
-            background: #8e6d13; border: 1px solid #e5c100; padding: 12px 24px;
-            color: #fff; cursor: pointer; font-weight: bold; transition: 0.3s;
-            width: 100%; margin-top: 10px;
+            background: #a8dadc; border: none; padding: 12px;
+            color: #457b9d; cursor: pointer; font-weight: bold; 
+            border-radius: 8px; width: 100%; transition: 0.3s;
         }
-        button:hover { background: #e5c100; color: #000; }
-        #status { font-size: 0.8rem; margin-top: 10px; color: #aaa; }
+        button:hover { background: #457b9d; color: white; }
+        input[type="file"] { margin-bottom: 15px; width: 100%; }
+        #status { font-size: 0.8rem; margin-top: 10px; color: #777; }
     </style>
 </head>
 <body>
 
     <div id="ui">
-        <h2>Royal Piano Room</h2>
-        <p>Unggah file MIDI untuk memulai resital:</p>
+        <h2>Heavenly Piano</h2>
         <input type="file" id="midi-upload" accept=".mid,.midi">
-        <button id="start-btn">MAINKAN KOMPOSISI</button>
-        <div id="status">Status: Menunggu file...</div>
+        <button id="start-btn">PLAY MELODY</button>
+        <div id="status">Pilih melodi untuk memulai...</div>
     </div>
 
     <script type="importmap">
@@ -51,97 +51,111 @@
         import * as Tone from 'tone';
         import { Midi } from '@tonejs/midi';
 
-        // --- 1. SETUP SCENE & CAMERA ---
+        // --- 1. SCENE DENGAN TEMA LANGIT LEMBUT ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x050402); // Sangat gelap, fokus pada piano
-        scene.fog = new THREE.Fog(0x050402, 5, 40);
+        // Gradasi langit fajar (Soft Blue to Peach)
+        scene.background = new THREE.Color(0xddeffb); 
+        scene.fog = new THREE.Fog(0xddeffb, 10, 50);
 
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(-15, 10, 20);
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 8, 15);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.toneMapping = THREE.ReinhardToneMapping; // HDR Feel
-        renderer.toneMappingExposure = 1.5;
+        renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
-        controls.maxDistance = 50;
 
-        // --- 2. PENCAHAYAAN KLASIK (Lilin & Chandelier) ---
-        const ambient = new THREE.AmbientLight(0x402010, 0.5); // Warm ambient
-        scene.add(ambient);
+        // --- 2. LIGHTING (Soft & Airy) ---
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x8d99ae, 1);
+        scene.add(hemiLight);
 
-        const spotLight = new THREE.SpotLight(0xffd580, 50); // Cahaya hangat lilin
-        spotLight.position.set(5, 15, 10);
-        spotLight.angle = 0.5;
-        spotLight.penumbra = 0.5;
-        scene.add(spotLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(5, 10, 7);
+        scene.add(dirLight);
 
-        // --- 3. LANTAI PARQUET & MEJA PIANO ---
-        const floorGeo = new THREE.PlaneGeometry(100, 100);
-        const floorMat = new THREE.MeshStandardMaterial({ color: 0x1a0f00, roughness: 0.1, metalness: 0.2 });
+        // --- 3. LANTAI AWAN TRANSPLASENT ---
+        const floorGeo = new THREE.CircleGeometry(20, 64);
+        const floorMat = new THREE.MeshStandardMaterial({ 
+            color: 0xffffff, 
+            transparent: true, 
+            opacity: 0.4, 
+            roughness: 0
+        });
         const floor = new THREE.Mesh(floorGeo, floorMat);
         floor.rotation.x = -Math.PI / 2;
-        floor.position.y = -0.5;
+        floor.position.y = -0.6;
         scene.add(floor);
 
-        // Body Piano Sederhana bergaya Abad 18 (Mahogany)
-        const bodyGeo = new THREE.BoxGeometry(47, 1.5, 6);
-        const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2e0d00, roughness: 0.05, metalness: 0.3 });
-        const pianoBody = new THREE.Mesh(bodyGeo, bodyMat);
-        pianoBody.position.set(0, -0.2, -2);
-        scene.add(pianoBody);
-
-        // --- 4. PEMBUATAN TUTS PIANO DENGAN ANIMASI ---
+        // --- 4. PEMBUATAN TUTS PIANO ---
         const keys = [];
-        const numKeys = 88;
-        const keyWidth = 0.5;
         const keyGroup = new THREE.Group();
         const pattern = [false, true, false, true, false, false, true, false, true, false, true, false];
-
+        
         let whiteKeyCount = 0;
-        for (let i = 0; i < numKeys; i++) {
+        for (let i = 0; i < 88; i++) {
             const isBlack = pattern[i % 12];
-            let mesh;
-
+            const geometry = isBlack ? new THREE.BoxGeometry(0.28, 0.4, 1.8) : new THREE.BoxGeometry(0.48, 0.3, 3);
+            const material = new THREE.MeshStandardMaterial({ 
+                color: isBlack ? 0x2b2d42 : 0xffffff,
+                roughness: 0.1,
+                metalness: 0.2
+            });
+            
+            const mesh = new THREE.Mesh(geometry, material);
+            
             if (isBlack) {
-                mesh = new THREE.Mesh(
-                    new THREE.BoxGeometry(0.3, 0.4, 2),
-                    new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.1 })
-                );
-                mesh.position.set((whiteKeyCount - 0.5) * (keyWidth + 0.02), 0.25, -0.5);
+                mesh.position.set((whiteKeyCount - 0.5) * 0.52, 0.2, -0.6);
             } else {
-                mesh = new THREE.Mesh(
-                    new THREE.BoxGeometry(keyWidth, 0.3, 3),
-                    new THREE.MeshStandardMaterial({ color: 0xfaf9f6, roughness: 0.2 })
-                );
-                mesh.position.set(whiteKeyCount * (keyWidth + 0.02), 0, 0);
+                mesh.position.set(whiteKeyCount * 0.52, 0, 0);
                 whiteKeyCount++;
             }
+            
             keyGroup.add(mesh);
             keys.push({ mesh, isBlack, originalY: mesh.position.y });
         }
-        keyGroup.position.x = -(whiteKeyCount * keyWidth) / 2;
+        keyGroup.position.x = -(whiteKeyCount * 0.52) / 2;
         scene.add(keyGroup);
 
-        // --- 5. AUDIO: SAMPLER PIANO NYATA ---
-        // Menggunakan sampel dari library Salamander (Steinway)
+        // --- 5. AUDIO SAMPLER ---
         const sampler = new Tone.Sampler({
-            urls: {
-                "A0": "A0.mp3", "C1": "C1.mp3", "D#1": "Ds1.mp3", "F#1": "Fs1.mp3",
-                "A1": "A1.mp3", "C2": "C2.mp3", "D#2": "Ds2.mp3", "F#2": "Fs2.mp3",
-                "C4": "C4.mp3"
-            },
-            release: 1,
-            baseUrl: "https://tonejs.github.io/audio/salamander/"
+            urls: { "C4": "C4.mp3", "A0": "A0.mp3", "A1": "A1.mp3" },
+            baseUrl: "https://tonejs.github.io/audio/salamander/",
+            release: 1.5
         }).toDestination();
 
-        // --- 6. LOGIKA MIDI & INTERAKSI ---
+        // --- 6. LOGIKA PERBAIKAN ANIMASI ---
+        function animateKeyPress(idx, duration) {
+            const key = keys[idx];
+            if (!key) return;
+
+            // Pastikan menghentikan animasi sebelumnya jika ada
+            TWEEN.removeAll(); 
+
+            // Gerakan Turun
+            new TWEEN.Tween(key.mesh.position)
+                .to({ y: key.originalY - 0.15 }, 80)
+                .easing(TWEEN.Easing.Cubic.Out)
+                .start();
+
+            // Efek Warna saat ditekan
+            key.mesh.material.emissive.setHex(0xa8dadc);
+
+            // Gerakan Kembali
+            setTimeout(() => {
+                new TWEEN.Tween(key.mesh.position)
+                    .to({ y: key.originalY }, 200)
+                    .easing(TWEEN.Easing.Quadratic.InOut)
+                    .start();
+                key.mesh.material.emissive.setHex(0x000000);
+            }, duration * 1000);
+        }
+
+        // --- 7. EVENT HANDLERS ---
         const uploadInput = document.getElementById('midi-upload');
         const startBtn = document.getElementById('start-btn');
-        const statusText = document.getElementById('status');
         let midiData = null;
 
         uploadInput.addEventListener('change', async (e) => {
@@ -149,52 +163,33 @@
             if (file) {
                 const arrayBuffer = await file.arrayBuffer();
                 midiData = new Midi(arrayBuffer);
-                statusText.innerText = "Status: MIDI Siap. Klik Mainkan.";
+                document.getElementById('status').innerText = "Melodi siap!";
             }
         });
 
         startBtn.addEventListener('click', async () => {
-            if (!midiData) return alert("Pilih file MIDI terlebih dahulu!");
-            
+            if (!midiData) return;
             await Tone.start();
-            statusText.innerText = "Status: Memainkan...";
             const now = Tone.now() + 0.5;
 
             midiData.tracks.forEach(track => {
                 track.notes.forEach(note => {
-                    // Jadwal Suara
                     sampler.triggerAttackRelease(note.name, note.duration, note.time + now, note.velocity);
                     
-                    // Jadwal Animasi (Sinkron dengan Waktu Audio)
                     Tone.Draw.schedule(() => {
-                        const idx = note.midi - 21;
-                        if (keys[idx]) animateKeyPress(idx, note.duration);
+                        animateKeyPress(note.midi - 21, note.duration);
                     }, note.time + now);
                 });
             });
         });
 
-        function animateKeyPress(idx, duration) {
-            const key = keys[idx];
-            // Animasi Turun (Abad 18 Easing)
-            new TWEEN.Tween(key.mesh.position)
-                .to({ y: key.originalY - 0.15 }, 50)
-                .easing(TWEEN.Easing.Quadratic.Out)
-                .start();
-
-            // Animasi Naik Kembali
-            setTimeout(() => {
-                new TWEEN.Tween(key.mesh.position)
-                    .to({ y: key.originalY }, 150)
-                    .easing(TWEEN.Easing.Quadratic.In)
-                    .start();
-            }, duration * 1000);
-        }
-
-        // --- 7. RENDER LOOP ---
+        // --- 8. RENDER LOOP (PENTING: TWEEN.update() ditambahkan) ---
         function animate() {
             requestAnimationFrame(animate);
-            TWEEN.update(); // Update semua transisi animasi
+            
+            // WAJIB: Ini yang membuat animasi bergerak
+            TWEEN.update(); 
+            
             controls.update();
             renderer.render(scene, camera);
         }
